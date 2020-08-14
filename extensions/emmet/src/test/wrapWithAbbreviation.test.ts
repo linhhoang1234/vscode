@@ -5,7 +5,7 @@
 
 import 'mocha';
 import * as assert from 'assert';
-import { Selection } from 'vscode';
+import { Selection, workspace, ConfigurationTarget } from 'vscode';
 import { withRandomFileEditor, closeAllEditors } from './testUtils';
 import { wrapWithAbbreviation, wrapIndividualLinesWithAbbreviation } from '../abbreviationActions';
 
@@ -56,13 +56,21 @@ const wrapMultiLineAbbrExpected = `
 	</ul>
 `;
 
+const wrapInlineElementExpectedFormatFalse = `
+	<ul class="nav main">
+		<h1><li class="item1">img</li></h1>
+		<h1><li class="item2">$hithere</li></h1>
+	</ul>
+`;
+
 suite('Tests for Wrap with Abbreviations', () => {
 	teardown(closeAllEditors);
 
 	const multiCursors = [new Selection(2, 6, 2, 6), new Selection(3, 6, 3, 6)];
 	const multiCursorsWithSelection = [new Selection(2, 2, 2, 28), new Selection(3, 2, 3, 33)];
-	const multiCursorsWithFullLineSelection = [new Selection(2, 0, 2, 28), new Selection(3, 0, 3, 33)];
+	const multiCursorsWithFullLineSelection = [new Selection(2, 0, 2, 28), new Selection(3, 0, 4, 0)];
 
+	const oldValueForSyntaxProfiles = workspace.getConfiguration('emmet').inspect('syntaxProfile');
 
 	test('Wrap with block element using multi cursor', () => {
 		return testWrapWithAbbreviation(multiCursors, 'div', wrapBlockElementExpected);
@@ -126,22 +134,73 @@ suite('Tests for Wrap with Abbreviations', () => {
 		<!-- /.hello -->
 	</ul>
 	`;
+		return testWrapWithAbbreviation([new Selection(2, 0, 2, 0)], 'li.hello|c', expectedContents, contents);
+	});
 
-		return withRandomFileEditor(contents, 'html', (editor, doc) => {
-			editor.selections = [new Selection(2, 0, 2, 0)];
-			const promise = wrapWithAbbreviation({ abbreviation: 'li.hello|c' });
-			if (!promise) {
-				assert.equal(1, 2, 'Wrap returned udnefined instead of promise.');
-				return Promise.resolve();
-			}
-			return promise.then(() => {
-				assert.equal(editor.document.getText(), expectedContents);
-				return Promise.resolve();
-			});
-		});
+	test('Wrap with abbreviation entire node when cursor is on opening tag', () => {
+		const contents = `
+	<div class="nav main">
+		hello
+	</div>
+	`;
+		const expectedContents = `
+	<div>
+		<div class="nav main">
+			hello
+		</div>
+	</div>
+	`;
+		return testWrapWithAbbreviation([new Selection(1, 1, 1, 1)], 'div', expectedContents, contents);
+	});
+
+	test('Wrap with abbreviation entire node when cursor is on closing tag', () => {
+		const contents = `
+	<div class="nav main">
+		hello
+	</div>
+	`;
+		const expectedContents = `
+	<div>
+		<div class="nav main">
+			hello
+		</div>
+	</div>
+	`;
+		return testWrapWithAbbreviation([new Selection(3, 1, 3, 1)], 'div', expectedContents, contents);
+	});
+
+	test('Wrap with multiline abbreviation doesnt add extra spaces', () => {
+		// Issue #29898
+		const contents = `
+	hello
+	`;
+		const expectedContents = `
+	<ul>
+		<li><a href="">hello</a></li>
+	</ul>
+	`;
+		return testWrapWithAbbreviation([new Selection(1, 2, 1, 2)], 'ul>li>a', expectedContents, contents);
 	});
 
 	test('Wrap individual lines with abbreviation', () => {
+		const contents = `
+	<ul class="nav main">
+		<li class="item1">This $10 is not a tabstop</li>
+		<li class="item2">hi.there</li>
+	</ul>
+`;
+		const wrapIndividualLinesExpected = `
+	<ul class="nav main">
+		<ul>
+			<li class="hello1"><li class="item1">This $10 is not a tabstop</li></li>
+			<li class="hello2"><li class="item2">hi.there</li></li>
+		</ul>
+	</ul>
+`;
+		return testWrapIndividualLinesWithAbbreviation([new Selection(2, 2, 3, 33)], 'ul>li.hello$*', wrapIndividualLinesExpected, contents);
+	});
+
+	test('Wrap individual lines with abbreviation with extra space selected', () => {
 		const contents = `
 	<ul class="nav main">
 		<li class="item1">img</li>
@@ -156,18 +215,7 @@ suite('Tests for Wrap with Abbreviations', () => {
 		</ul>
 	</ul>
 `;
-		return withRandomFileEditor(contents, 'html', (editor, doc) => {
-			editor.selections = [new Selection(2, 2, 3, 33)];
-			const promise = wrapIndividualLinesWithAbbreviation({ abbreviation: 'ul>li.hello$*' });
-			if (!promise) {
-				assert.equal(1, 2, 'Wrap Individual Lines with Abbreviation returned udnefined.');
-				return Promise.resolve();
-			}
-			return promise.then(() => {
-				assert.equal(editor.document.getText(), wrapIndividualLinesExpected);
-				return Promise.resolve();
-			});
-		});
+		return testWrapIndividualLinesWithAbbreviation([new Selection(2, 1, 4, 0)], 'ul>li.hello$*', wrapIndividualLinesExpected, contents);
 	});
 
 	test('Wrap individual lines with abbreviation with comment filter', () => {
@@ -187,18 +235,7 @@ suite('Tests for Wrap with Abbreviations', () => {
 		</ul>
 	</ul>
 `;
-		return withRandomFileEditor(contents, 'html', (editor, doc) => {
-			editor.selections = [new Selection(2, 2, 3, 33)];
-			const promise = wrapIndividualLinesWithAbbreviation({ abbreviation: 'ul>li.hello*|c' });
-			if (!promise) {
-				assert.equal(1, 2, 'Wrap Individual Lines with Abbreviation returned udnefined.');
-				return Promise.resolve();
-			}
-			return promise.then(() => {
-				assert.equal(editor.document.getText(), wrapIndividualLinesExpected);
-				return Promise.resolve();
-			});
-		});
+		return testWrapIndividualLinesWithAbbreviation([new Selection(2, 2, 3, 33)], 'ul>li.hello*|c', wrapIndividualLinesExpected, contents);
 	});
 
 	test('Wrap individual lines with abbreviation and trim', () => {
@@ -216,29 +253,93 @@ suite('Tests for Wrap with Abbreviations', () => {
 			</ul>
 		</ul>
 	`;
-		return withRandomFileEditor(contents, 'html', (editor, doc) => {
-			editor.selections = [new Selection(2, 3, 3, 16)];
-			const promise = wrapIndividualLinesWithAbbreviation({ abbreviation: 'ul>li.hello$*|t' });
-			if (!promise) {
-				assert.equal(1, 2, 'Wrap Individual Lines with Abbreviation returned udnefined.');
-				return Promise.resolve();
-			}
+		return testWrapIndividualLinesWithAbbreviation([new Selection(2, 3, 3, 16)], 'ul>li.hello$*|t', wrapIndividualLinesExpected, contents);
+	});
 
-			return promise.then(() => {
-				assert.equal(editor.document.getText(), wrapIndividualLinesExpected);
-				return Promise.resolve();
+	test('Wrap with abbreviation and format set to false', () => {
+		return workspace.getConfiguration('emmet').update('syntaxProfiles',{ 'html' : { 'format': false } } , ConfigurationTarget.Global).then(() => {
+			return testWrapWithAbbreviation(multiCursors,'h1',wrapInlineElementExpectedFormatFalse).then(() => {
+				return workspace.getConfiguration('emmet').update('syntaxProfiles',oldValueForSyntaxProfiles ? oldValueForSyntaxProfiles.globalValue : undefined, ConfigurationTarget.Global);
 			});
 		});
+	});
+
+	test('Wrap multi line selections with abbreviation', () => {
+		const htmlContentsForWrapMultiLineTests = `
+			<ul class="nav main">
+				line1
+				line2
+
+				line3
+				line4
+			</ul>
+		`;
+
+		const wrapMultiLineExpected = `
+			<ul class="nav main">
+				<div>
+					line1
+					line2
+				</div>
+
+				<div>
+					line3
+					line4
+				</div>
+			</ul>
+		`;
+
+		return testWrapWithAbbreviation([new Selection(2, 4, 3, 9), new Selection(5, 4, 6, 9)], 'div', wrapMultiLineExpected, htmlContentsForWrapMultiLineTests);
+	});
+
+	test('Wrap multiline with abbreviation uses className for jsx files', () => {
+		const wrapMultiLineJsxExpected = `
+	<ul class="nav main">
+		<div className="hello">
+			<li class="item1">img</li>
+			<li class="item2">$hithere</li>
+		</div>
+	</ul>
+`;
+
+		return testWrapWithAbbreviation([new Selection(2,2,3,33)], '.hello', wrapMultiLineJsxExpected, htmlContentsForWrapTests, 'jsx');
+	});
+
+	test('Wrap individual line with abbreviation uses className for jsx files', () => {
+		const wrapIndividualLinesJsxExpected = `
+	<ul class="nav main">
+		<div className="hello1"><li class="item1">img</li></div>
+		<div className="hello2"><li class="item2">$hithere</li></div>
+	</ul>
+`;
+
+		return testWrapIndividualLinesWithAbbreviation([new Selection(2,2,3,33)], '.hello$*', wrapIndividualLinesJsxExpected, htmlContentsForWrapTests, 'jsx');
 	});
 });
 
 
-function testWrapWithAbbreviation(selections: Selection[], abbreviation: string, expectedContents: string): Thenable<any> {
-	return withRandomFileEditor(htmlContentsForWrapTests, 'html', (editor, doc) => {
+function testWrapWithAbbreviation(selections: Selection[], abbreviation: string, expectedContents: string, input: string = htmlContentsForWrapTests, fileExtension: string = 'html'): Thenable<any> {
+	return withRandomFileEditor(input, fileExtension, (editor, _) => {
 		editor.selections = selections;
 		const promise = wrapWithAbbreviation({ abbreviation });
 		if (!promise) {
-			assert.equal(1, 2, 'Wrap  with Abbreviation returned udnefined.');
+			assert.equal(1, 2, 'Wrap  with Abbreviation returned undefined.');
+			return Promise.resolve();
+		}
+
+		return promise.then(() => {
+			assert.equal(editor.document.getText(), expectedContents);
+			return Promise.resolve();
+		});
+	});
+}
+
+function testWrapIndividualLinesWithAbbreviation(selections: Selection[], abbreviation: string, expectedContents: string, input: string = htmlContentsForWrapTests, fileExtension: string = 'html'): Thenable<any> {
+	return withRandomFileEditor(input, fileExtension, (editor, _) => {
+		editor.selections = selections;
+		const promise = wrapIndividualLinesWithAbbreviation({ abbreviation });
+		if (!promise) {
+			assert.equal(1, 2, 'Wrap individual lines with Abbreviation returned undefined.');
 			return Promise.resolve();
 		}
 

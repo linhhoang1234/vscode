@@ -2,8 +2,6 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-'use strict';
-
 import * as assert from 'assert';
 import { IDisposable, dispose, ReferenceCollection } from 'vs/base/common/lifecycle';
 
@@ -44,10 +42,26 @@ suite('Lifecycle', () => {
 		assert(!disposable.isDisposed);
 		assert(!disposable2.isDisposed);
 
-		dispose(disposable, disposable2);
+		dispose(disposable);
+		dispose(disposable2);
 
 		assert(disposable.isDisposed);
 		assert(disposable2.isDisposed);
+	});
+
+	test('Action bar has broken accessibility #100273', function () {
+		let array = [{ dispose() { } }, { dispose() { } }];
+		let array2 = dispose(array);
+
+		assert.equal(array.length, 2);
+		assert.equal(array2.length, 0);
+		assert.ok(array !== array2);
+
+		let set = new Set<IDisposable>([{ dispose() { } }, { dispose() { } }]);
+		let setValues = set.values();
+		let setValues2 = dispose(setValues);
+		assert.ok(setValues === setValues2);
+
 	});
 });
 
@@ -56,7 +70,7 @@ suite('Reference Collection', () => {
 		private _count = 0;
 		get count() { return this._count; }
 		protected createReferencedObject(key: string): number { this._count++; return key.length; }
-		protected destroyReferencedObject(object: number): void { this._count--; }
+		protected destroyReferencedObject(key: string, object: number): void { this._count--; }
 	}
 
 	test('simple', () => {
